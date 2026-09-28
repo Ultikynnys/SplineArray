@@ -216,7 +216,8 @@ void ASplineArrayActor::Rebuild()
 		return;
 	}
 
-	for (USplineMeshComponent* Segment : Segments)
+	TInlineComponentArray<USplineMeshComponent*> ExistingSegments(this);
+	for (USplineMeshComponent* Segment : ExistingSegments)
 	{
 		if (IsValid(Segment))
 		{
@@ -292,6 +293,7 @@ void ASplineArrayActor::Rebuild()
 			Spline->GetTangentAtDistanceAlongSpline(To, ESplineCoordinateSpace::Local).GetSafeNormal() * (To - From)));
 
 		Segment->SetStartAndEnd(P0, T0, P1, T1, true);
+		AddInstanceComponent(Segment);
 		Segment->RegisterComponent();
 		Segments.Add(Segment);
 	}
