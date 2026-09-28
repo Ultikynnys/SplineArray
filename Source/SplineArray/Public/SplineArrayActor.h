@@ -19,7 +19,9 @@ enum class ESplineArrayDistribution : uint8
 	/** Place a copy every "Spacing" cm until the end of the spline is reached. */
 	BySpacing      UMETA(DisplayName = "By Spacing"),
 	/** Fit as many copies of "Item Length" as possible along the spline. */
-	FitAlongSpline UMETA(DisplayName = "Fit Along Spline")
+	FitAlongSpline UMETA(DisplayName = "Fit Along Spline"),
+	/** Chain copies exactly end to end using the mesh's length along its Forward Axis, plus a +/-5% offset. */
+	EndToEnd     UMETA(DisplayName = "End To End")
 };
 
 /** Which local axis of the source mesh should point along the spline. */
@@ -89,9 +91,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Source")
 	ESplineArrayForwardAxis ForwardAxis = ESplineArrayForwardAxis::X;
 
-	/** Use the mesh's bounding-box length (along Forward Axis) as the base spacing instead of a fixed value. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Source")
-	bool bUseMeshLengthForSpacing = false;
+	/** Read-only: the source mesh's length (cm) along its Forward Axis, used by the End To End mode. */
+	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Spline Array|Source")
+	float MeshAxisLength = 0.0f;
 
 	// --- Distribution ---
 
@@ -107,9 +109,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.01", Units = "cm", EditCondition = "Distribution == ESplineArrayDistribution::FitAlongSpline", EditConditionHides))
 	float ItemLength = 100.0f;
 
-	/** Extra gap (cm) added between copies (works with the mesh-length option too). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm", EditCondition = "Distribution != ESplineArrayDistribution::ByCount", EditConditionHides))
+	/** Extra gap (cm) added between copies in the spacing / fit modes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm", EditCondition = "Distribution == ESplineArrayDistribution::BySpacing || Distribution == ESplineArrayDistribution::FitAlongSpline", EditConditionHides))
 	float Gap = 0.0f;
+
+	/**
+	 * End To End mode: gap (positive) or overlap (negative) between copies, as a fraction
+	 * of the mesh's Forward-Axis length. Clamped to +/-0.05 (i.e. +/-5%).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "-0.05", ClampMax = "0.05", UIMin = "-0.05", UIMax = "0.05", EditCondition = "Distribution == ESplineArrayDistribution::EndToEnd", EditConditionHides))
+	float LengthOffset = 0.0f;
 
 	/** Distance (cm) to skip from the start of the spline. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm"))

@@ -1,9 +1,8 @@
 # Unreal Engine generated
-Binaries/
 Intermediate/
-Build/
 Saved/
 DerivedDataCache/
+Build/
 .vs/
 .idea/
 *.opensdf
@@ -17,11 +16,11 @@ DerivedDataCache/
 *.user
 *.userprefs
 
-# Compiled
+# Compiled intermediates
+# (note: the shipped binaries under Binaries/Win64 - .dll and .modules - are tracked on purpose)
 *.obj
 *.o
 *.exe
-*.dll
 *.pdb
 *.lib
 *.so

@@ -167,18 +167,22 @@ float ASplineArrayActor::ResolveSpacing(int32& OutCount) const
 		break;
 
 	case ESplineArrayDistribution::BySpacing:
-		Step = (bUseMeshLengthForSpacing ? MeshLength : Spacing) + Gap;
-		Step = FMath::Max(Step, KINDA_SMALL_NUMBER);
+		Step = FMath::Max(Spacing + Gap, KINDA_SMALL_NUMBER);
 		OutCount = FMath::FloorToInt(Usable / Step) + 1;
 		break;
 
 	case ESplineArrayDistribution::FitAlongSpline:
-	{
-		const float Item = (bUseMeshLengthForSpacing ? MeshLength : ItemLength) + Gap;
-		Step = FMath::Max(Item, KINDA_SMALL_NUMBER);
+		Step = FMath::Max(ItemLength + Gap, KINDA_SMALL_NUMBER);
 		OutCount = FMath::Max(1, FMath::FloorToInt(Usable / Step) + 1);
 		break;
-	}
+
+	case ESplineArrayDistribution::EndToEnd:
+		// Chain copies exactly end to end: step = the mesh's length along its Forward Axis,
+		// nudged by LengthOffset (+/-5%) so the chain can have a small gap or overlap.
+		Step = MeshLength * (1.0f + FMath::Clamp(LengthOffset, -0.05f, 0.05f));
+		Step = FMath::Max(Step, KINDA_SMALL_NUMBER);
+		OutCount = FMath::Max(1, FMath::FloorToInt(Usable / Step) + 1);
+		break;
 	}
 
 	return Step;
@@ -206,6 +210,7 @@ void ASplineArrayActor::Rebuild()
 
 	Instances->ClearInstances();
 	Instances->SetStaticMesh(SourceMesh);
+	MeshAxisLength = ComputeMeshLength();
 
 	if (!SourceMesh || !Spline)
 	{
