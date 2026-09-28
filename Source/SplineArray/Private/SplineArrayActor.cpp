@@ -288,6 +288,6 @@ void ASplineArrayActor::Rebuild()
 
 	if (InstanceTransforms.Num() > 0)
 	{
-		Instances->AddInstances(InstanceTransforms);
+		Instances->AddInstances(InstanceTransforms, /*bShouldReturnIndices=*/false);
 	}
 }
