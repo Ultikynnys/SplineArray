@@ -10,15 +10,16 @@ class USplineComponent;
 class UInstancedStaticMeshComponent;
 class USplineMeshComponent;
 class UStaticMesh;
+class UMaterialInterface;
 
 /** How copies of the mesh are distributed along the spline. */
 UENUM(BlueprintType)
 enum class ESplineArrayDistribution : uint8
 {
 	/** Place an exact number of copies, spread evenly between the start/end offsets. */
-	ByCount        UMETA(DisplayName = "By Count"),
+	ByCount        UMETA(Hidden),
 	/** Place a copy every "Spacing" cm until the end of the spline is reached. */
-	BySpacing      UMETA(DisplayName = "By Spacing"),
+	BySpacing      UMETA(Hidden),
 	/** Automatically tile the measured mesh along the spline. */
 	FitAlongSpline UMETA(DisplayName = "Fit Along Spline"),
 	/** Chain copies exactly end to end using the mesh's length along its Forward Axis, plus a +/-5% offset. */
@@ -29,9 +30,12 @@ enum class ESplineArrayDistribution : uint8
 UENUM(BlueprintType)
 enum class ESplineArrayForwardAxis : uint8
 {
-	X UMETA(DisplayName = "X (forward)"),
-	Y UMETA(DisplayName = "Y (right)"),
-	Z UMETA(DisplayName = "Z (up)")
+	X UMETA(DisplayName = "+X"),
+	Y UMETA(DisplayName = "+Y"),
+	Z UMETA(DisplayName = "+Z"),
+	NegativeX UMETA(DisplayName = "-X"),
+	NegativeY UMETA(DisplayName = "-Y"),
+	NegativeZ UMETA(DisplayName = "-Z")
 };
 
 /**
@@ -39,7 +43,6 @@ enum class ESplineArrayForwardAxis : uint8
  * Array + Curve modifiers. Copies use spline mesh components so each mesh bends
  * along its interval.
  *
- * Each copy deforms along its interval of the spline.
  * The layout rebuilds automatically when the actor is constructed, when any
  * property changes, and (in the editor) when the spline is edited.
  */
@@ -54,13 +57,14 @@ public:
 	//~ Begin AActor
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void PostLoad() override;
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 	//~ End AActor
 
-	/** Recomputes and rebuilds every instance from the current spline + settings. */
-	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Spline Array")
+	/** Recomputes the generated mesh from the spline and settings. */
+	UFUNCTION(BlueprintCallable, Category = "Spline Array")
 	void Rebuild();
 
 	/** Distance (cm) between two consecutive copies with the current settings. */
@@ -74,101 +78,104 @@ public:
 protected:
 	// --- Components ---
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Spline Array|Components")
+	UPROPERTY()
 	TObjectPtr<USceneComponent> SceneRoot;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Spline Array|Components")
+	UPROPERTY()
 	TObjectPtr<USplineComponent> Spline;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Spline Array|Components")
+	UPROPERTY()
 	TObjectPtr<UInstancedStaticMeshComponent> Instances;
 
 	// --- Source ---
 
 	/** Mesh that gets repeated. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Source")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Mesh"))
 	TObjectPtr<UStaticMesh> SourceMesh;
 
-	/** Local axis of the mesh that is aligned to the spline tangent. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Source")
+	/** Mesh axis deformed along the spline; negative directions reverse the mesh. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Axis"))
 	ESplineArrayForwardAxis ForwardAxis = ESplineArrayForwardAxis::X;
 
 	/** Read-only: the source mesh's length (cm) along its Forward Axis. */
-	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Spline Array|Source")
+	UPROPERTY(Transient)
 	float MeshAxisLength = 0.0f;
 
 	// --- Distribution ---
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution")
-	ESplineArrayDistribution Distribution = ESplineArrayDistribution::EndToEnd;
+	UPROPERTY()
+	ESplineArrayDistribution Distribution = ESplineArrayDistribution::FitAlongSpline;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "1", UIMin = "1", EditCondition = "Distribution == ESplineArrayDistribution::ByCount", EditConditionHides))
+	UPROPERTY()
 	int32 Count = 10;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm", EditCondition = "Distribution == ESplineArrayDistribution::BySpacing", EditConditionHides))
+	UPROPERTY()
 	float Spacing = 200.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.01", Units = "cm", EditCondition = "Distribution == ESplineArrayDistribution::FitAlongSpline", EditConditionHides))
+	UPROPERTY()
 	float ItemLength = 100.0f;
 
 	/** Extra gap (cm) added between copies in the spacing / fit modes. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm", EditCondition = "Distribution == ESplineArrayDistribution::BySpacing || Distribution == ESplineArrayDistribution::FitAlongSpline", EditConditionHides))
+	UPROPERTY()
 	float Gap = 0.0f;
 
-	/**
-	 * End To End mode: gap (positive) or overlap (negative) between copies, as a fraction
-	 * of the mesh's Forward-Axis length. Clamped to +/-0.05 (i.e. +/-5%).
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "-0.05", ClampMax = "0.05", UIMin = "-0.05", UIMax = "0.05", EditCondition = "Distribution == ESplineArrayDistribution::EndToEnd", EditConditionHides))
+	/** Previously serialized fractional offset; migrated to AxisOffsetPercent on load. */
+	UPROPERTY()
 	float LengthOffset = 0.0f;
 
 	/** Distance (cm) to skip from the start of the spline. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm"))
+	UPROPERTY()
 	float StartOffset = 0.0f;
 
 	/** Distance (cm) to skip from the end of the spline. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "0.0", Units = "cm"))
+	UPROPERTY()
 	float EndOffset = 0.0f;
 
 	// --- Orientation / transform ---
 
-	/** Align each copy to the spline's tangent/rotation. When off, copies use only RotationOffset. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Orientation")
+	/** Legacy setting retained for existing actors. */
+	UPROPERTY()
 	bool bAlignToTangent = true;
 
 	/** Rotational correction applied to every copy, after spline alignment. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Orientation")
+	UPROPERTY()
 	FRotator RotationOffset = FRotator::ZeroRotator;
 
 	/** Offset applied to every copy, in the copy's local space. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Orientation")
+	UPROPERTY()
 	FVector LocationOffset = FVector::ZeroVector;
 
 	/** Base scale applied to every copy (multiplied by any spline scale). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Orientation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Mesh Scale"))
 	FVector Scale = FVector(1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Material"))
+	TObjectPtr<UMaterialInterface> Material;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Axis Offset (%)", ClampMin = "-5.0", ClampMax = "5.0", UIMin = "-5.0", UIMax = "5.0"))
+	float AxisOffsetPercent = 0.0f;
 
 	// --- Randomisation ---
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation")
+	UPROPERTY()
 	bool bRandomizeYaw = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation", meta = (EditCondition = "bRandomizeYaw", EditConditionHides, Units = "deg"))
+	UPROPERTY()
 	float YawRangeMin = -180.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation", meta = (EditCondition = "bRandomizeYaw", EditConditionHides, Units = "deg"))
+	UPROPERTY()
 	float YawRangeMax = 180.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation")
+	UPROPERTY()
 	bool bRandomizeScale = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation", meta = (EditCondition = "bRandomizeScale", EditConditionHides))
+	UPROPERTY()
 	float ScaleRangeMin = 0.8f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation", meta = (EditCondition = "bRandomizeScale", EditConditionHides))
+	UPROPERTY()
 	float ScaleRangeMax = 1.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Randomisation")
+	UPROPERTY()
 	int32 RandomSeed = 0;
 
 private:
@@ -180,6 +187,10 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<USplineMeshComponent>> Segments;
+
+	/** Generated bisected meshes (source mesh + slab), held for the current layout. */
+	UPROPERTY(Transient)
+	TMap<FString, TObjectPtr<UStaticMesh>> BisectCache;
 
 	/** Resolves the distance between copies and, out, how many copies to place. Returns 0 if it can't be resolved. */
 	float ResolveSpacing(int32& OutCount) const;

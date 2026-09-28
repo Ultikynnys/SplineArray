@@ -17,6 +17,11 @@ public class SplineArray : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"GeometryCore",
+			"MeshConversion",
+			"MeshDescription",
+			"StaticMeshDescription",
+			"RenderCore"
 		});
 	}
 }

@@ -6,6 +6,8 @@
 #include "Components/SplineMeshComponent.h"
 #include "Components/SplineComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "SplineArrayMeshTools.h"
 
 ASplineArrayActor::ASplineArrayActor()
 {
@@ -26,6 +28,17 @@ ASplineArrayActor::ASplineArrayActor()
 	Instances->SetupAttachment(SceneRoot);
 	Instances->SetVisibility(false);
 	Instances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void ASplineArrayActor::PostLoad()
+{
+	Super::PostLoad();
+	if (!FMath::IsNearlyZero(LengthOffset) && FMath::IsNearlyZero(AxisOffsetPercent))
+	{
+		AxisOffsetPercent = FMath::Clamp(LengthOffset * 100.0f, -5.0f, 5.0f);
+	}
+	LengthOffset = 0.0f;
+	Distribution = ESplineArrayDistribution::FitAlongSpline;
 }
 
 void ASplineArrayActor::OnConstruction(const FTransform& Transform)
@@ -93,6 +106,8 @@ uint32 ASplineArrayActor::ComputeSplineHash() const
 		Hash = HashCombine(Hash, GetTypeHash(Spline->GetLocationAtSplinePoint(Index, ESplineCoordinateSpace::Local)));
 		Hash = HashCombine(Hash, GetTypeHash(Spline->GetArriveTangentAtSplinePoint(Index, ESplineCoordinateSpace::Local)));
 		Hash = HashCombine(Hash, GetTypeHash(Spline->GetLeaveTangentAtSplinePoint(Index, ESplineCoordinateSpace::Local)));
+		Hash = HashCombine(Hash, GetTypeHash(Spline->GetRotationAtSplinePoint(Index, ESplineCoordinateSpace::Local).Quaternion()));
+		Hash = HashCombine(Hash, GetTypeHash(Spline->GetScaleAtSplinePoint(Index)));
 	}
 	return Hash;
 }
@@ -109,10 +124,13 @@ float ASplineArrayActor::ComputeMeshLength() const
 	switch (ForwardAxis)
 	{
 	case ESplineArrayForwardAxis::Y:
+	case ESplineArrayForwardAxis::NegativeY:
 		return Extent.Y * 2.0f;
 	case ESplineArrayForwardAxis::Z:
+	case ESplineArrayForwardAxis::NegativeZ:
 		return Extent.Z * 2.0f;
 	case ESplineArrayForwardAxis::X:
+	case ESplineArrayForwardAxis::NegativeX:
 	default:
 		return Extent.X * 2.0f;
 	}
@@ -128,6 +146,15 @@ FQuat ASplineArrayActor::ComputeForwardAxisCorrection() const
 		break;
 	case ESplineArrayForwardAxis::Z:
 		Forward = FVector::UpVector;
+		break;
+	case ESplineArrayForwardAxis::NegativeX:
+		Forward = -FVector::ForwardVector;
+		break;
+	case ESplineArrayForwardAxis::NegativeY:
+		Forward = -FVector::RightVector;
+		break;
+	case ESplineArrayForwardAxis::NegativeZ:
+		Forward = -FVector::UpVector;
 		break;
 	case ESplineArrayForwardAxis::X:
 	default:
@@ -156,43 +183,17 @@ float ASplineArrayActor::ResolveSpacing(int32& OutCount) const
 	}
 
 	const float MeshLength = ComputeMeshLength();
-	const float AxisScale = ForwardAxis == ESplineArrayForwardAxis::X ? Scale.X
-		: ForwardAxis == ESplineArrayForwardAxis::Y ? Scale.Y : Scale.Z;
+	const float AxisScale = ForwardAxis == ESplineArrayForwardAxis::X || ForwardAxis == ESplineArrayForwardAxis::NegativeX ? Scale.X
+		: ForwardAxis == ESplineArrayForwardAxis::Y || ForwardAxis == ESplineArrayForwardAxis::NegativeY ? Scale.Y : Scale.Z;
 	const float SegmentLength = MeshLength * FMath::Abs(AxisScale);
-	float Step = 0.0f;
 
-	switch (Distribution)
+	if (SegmentLength <= KINDA_SMALL_NUMBER)
 	{
-	case ESplineArrayDistribution::ByCount:
-		if (SegmentLength <= KINDA_SMALL_NUMBER || Usable < SegmentLength)
-		{
-			return 0.0f;
-		}
-		OutCount = FMath::Max(1, Count);
-		Step = OutCount > 1 ? (Usable - SegmentLength) / static_cast<float>(OutCount - 1) : 0.0f;
-		break;
-
-	case ESplineArrayDistribution::BySpacing:
-		Step = FMath::Max(Spacing + Gap, KINDA_SMALL_NUMBER);
-		OutCount = SegmentLength > KINDA_SMALL_NUMBER && Usable >= SegmentLength
-			? FMath::FloorToInt((Usable - SegmentLength) / Step) + 1 : 0;
-		break;
-
-	case ESplineArrayDistribution::FitAlongSpline:
-		Step = FMath::Max(SegmentLength + Gap, KINDA_SMALL_NUMBER);
-		OutCount = SegmentLength > KINDA_SMALL_NUMBER ? FMath::CeilToInt(Usable / Step) : 0;
-		break;
-
-	case ESplineArrayDistribution::EndToEnd:
-		if (SegmentLength <= KINDA_SMALL_NUMBER)
-		{
-			return 0.0f;
-		}
-		Step = SegmentLength * (1.0f + FMath::Clamp(LengthOffset, -0.05f, 0.05f));
-		OutCount = FMath::CeilToInt(Usable / Step);
-		break;
+		return 0.0f;
 	}
 
+	const float Step = SegmentLength * (1.0f + FMath::Clamp(AxisOffsetPercent, -5.0f, 5.0f) / 100.0f);
+	OutCount = FMath::Max(1, FMath::CeilToInt(Usable / Step));
 	return Step;
 }
 
@@ -236,66 +237,131 @@ void ASplineArrayActor::Rebuild()
 
 	const float Start = FMath::Max(0.0f, StartOffset);
 	const float End = Spline->GetSplineLength() - FMath::Max(0.0f, EndOffset);
-	int32 Num = 0;
-	const float Step = ResolveSpacing(Num);
-	if (Num <= 0 || End <= Start)
+	const float MeshScaleAlongAxis = ForwardAxis == ESplineArrayForwardAxis::X || ForwardAxis == ESplineArrayForwardAxis::NegativeX ? Scale.X
+		: ForwardAxis == ESplineArrayForwardAxis::Y || ForwardAxis == ESplineArrayForwardAxis::NegativeY ? Scale.Y : Scale.Z;
+	const float SegmentLength = MeshAxisLength * FMath::Abs(MeshScaleAlongAxis);
+	if (SegmentLength <= KINDA_SMALL_NUMBER || End <= Start)
 	{
 		return;
 	}
 
-	const float AxisScale = ForwardAxis == ESplineArrayForwardAxis::X ? Scale.X
-		: ForwardAxis == ESplineArrayForwardAxis::Y ? Scale.Y : Scale.Z;
-	const float SegmentLength = MeshAxisLength * FMath::Abs(AxisScale);
-	const ESplineMeshAxis::Type MeshAxis = ForwardAxis == ESplineArrayForwardAxis::X ? ESplineMeshAxis::X
-		: ForwardAxis == ESplineArrayForwardAxis::Y ? ESplineMeshAxis::Y : ESplineMeshAxis::Z;
-	FRandomStream Random(RandomSeed);
+	const ESplineMeshAxis::Type MeshAxis = ForwardAxis == ESplineArrayForwardAxis::X || ForwardAxis == ESplineArrayForwardAxis::NegativeX ? ESplineMeshAxis::X
+		: ForwardAxis == ESplineArrayForwardAxis::Y || ForwardAxis == ESplineArrayForwardAxis::NegativeY ? ESplineMeshAxis::Y : ESplineMeshAxis::Z;
+	const bool bReverseAxis = ForwardAxis == ESplineArrayForwardAxis::NegativeX
+		|| ForwardAxis == ESplineArrayForwardAxis::NegativeY || ForwardAxis == ESplineArrayForwardAxis::NegativeZ;
+	const int32 AxisIndex = static_cast<int32>(MeshAxis);
+	const FVector2D CrossScale = MeshAxis == ESplineMeshAxis::X ? FVector2D(FMath::Abs(Scale.Y), FMath::Abs(Scale.Z))
+		: MeshAxis == ESplineMeshAxis::Y ? FVector2D(FMath::Abs(Scale.X), FMath::Abs(Scale.Z))
+		: FVector2D(FMath::Abs(Scale.X), FMath::Abs(Scale.Y));
+	const FTransform SplineToParent = Spline->GetRelativeTransform();
+	const float ScaleAlongAxis = FMath::Max(FMath::Abs(MeshScaleAlongAxis), KINDA_SMALL_NUMBER);
+	const float Step = FMath::Max(SegmentLength * (1.0f + FMath::Clamp(AxisOffsetPercent, -5.0f, 5.0f) / 100.0f), KINDA_SMALL_NUMBER);
 
-	for (int32 Index = 0; Index < Num; ++Index)
+	BisectCache.Empty();
+
+	const FBox MeshBounds = SourceMesh->GetBoundingBox();
+	const float MeshAxisMin = static_cast<float>(MeshBounds.Min[AxisIndex]);
+	const float MeshAxisMax = static_cast<float>(MeshBounds.Max[AxisIndex]);
+
+	// A single SplineMeshComponent renders one cubic between its endpoints, so a copy that
+	// spans several spline control points cuts the corner. Breaking every copy at the
+	// control-point distances makes each sub-segment lie inside one spline cubic and hug the curve.
+	TArray<float> SplinePointDistances;
 	{
-		const float From = Start + Step * Index;
-		const float To = FMath::Min(From + SegmentLength, End);
-		if (To <= From + KINDA_SMALL_NUMBER)
+		const int32 NumSplinePoints = Spline->GetNumberOfSplinePoints();
+		SplinePointDistances.Reserve(NumSplinePoints);
+		for (int32 PointIndex = 0; PointIndex < NumSplinePoints; ++PointIndex)
+		{
+			SplinePointDistances.Add(Spline->GetDistanceAlongSplineAtSplinePoint(PointIndex));
+		}
+	}
+
+	TArray<float> CutDistances;
+
+	for (float Cursor = Start; Cursor < End - KINDA_SMALL_NUMBER; Cursor += Step)
+	{
+		const float Span = FMath::Min(SegmentLength, End - Cursor);
+		if (Span <= KINDA_SMALL_NUMBER)
 		{
 			break;
 		}
 
-		USplineMeshComponent* Segment = NewObject<USplineMeshComponent>(this);
-		Segment->SetupAttachment(SceneRoot);
-		Segment->SetMobility(EComponentMobility::Movable);
-		Segment->SetStaticMesh(SourceMesh);
-		Segment->SetForwardAxis(MeshAxis, false);
-		Segment->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		Segment->SetGenerateOverlapEvents(false);
-		Segment->SetCastShadow(true);
-		Segment->SetRelativeRotation(RotationOffset);
-		Segment->SetRelativeLocation(LocationOffset);
+		const bool bPartial = Span < SegmentLength - KINDA_SMALL_NUMBER;
+		const float CopyEnd = Cursor + Span;
 
-		FVector SegmentScale = Scale;
-		if (bRandomizeScale)
+		CutDistances.Reset();
+		CutDistances.Add(Cursor);
+		for (const float PointDistance : SplinePointDistances)
 		{
-			SegmentScale *= Random.FRandRange(FMath::Min(ScaleRangeMin, ScaleRangeMax), FMath::Max(ScaleRangeMin, ScaleRangeMax));
+			if (PointDistance > Cursor + KINDA_SMALL_NUMBER && PointDistance < CopyEnd - KINDA_SMALL_NUMBER)
+			{
+				CutDistances.Add(PointDistance);
+			}
 		}
-		Segment->SetRelativeScale3D(SegmentScale);
-		if (bRandomizeYaw)
+		CutDistances.Add(CopyEnd);
+
+		for (int32 CutIndex = 0; CutIndex + 1 < CutDistances.Num(); ++CutIndex)
 		{
-			Segment->AddLocalRotation(FRotator(0.0f, Random.FRandRange(FMath::Min(YawRangeMin, YawRangeMax), FMath::Max(YawRangeMin, YawRangeMax)), 0.0f));
+			const float From = CutDistances[CutIndex];
+			const float To = CutDistances[CutIndex + 1];
+			if (To - From <= KINDA_SMALL_NUMBER)
+			{
+				continue;
+			}
+
+			const float NearMesh = bReverseAxis
+				? MeshAxisMax - (From - Cursor) / ScaleAlongAxis
+				: MeshAxisMin + (From - Cursor) / ScaleAlongAxis;
+			const float FarMesh = bReverseAxis
+				? MeshAxisMax - (To - Cursor) / ScaleAlongAxis
+				: MeshAxisMin + (To - Cursor) / ScaleAlongAxis;
+			const float SliceStart = FMath::Min(NearMesh, FarMesh);
+			const float SliceLength = FMath::Abs(FarMesh - NearMesh);
+
+			UStaticMesh* SegmentMesh = SplineArrayMeshTools::BisectMesh(SourceMesh, AxisIndex, SliceStart, SliceLength, BisectCache);
+
+			USplineMeshComponent* Segment = NewObject<USplineMeshComponent>(this, NAME_None, RF_Transient);
+			Segment->SetupAttachment(SceneRoot);
+			Segment->SetMobility(EComponentMobility::Movable);
+			Segment->SetStaticMesh(SegmentMesh);
+			if (Material)
+			{
+				// Bisected meshes are built from a mesh description and carry no material slots,
+				// so drive the override from the material itself instead of the slot count.
+				const int32 NumMaterialSlots = FMath::Max(1, SegmentMesh->GetStaticMaterials().Num());
+				for (int32 Slot = 0; Slot < NumMaterialSlots; ++Slot)
+				{
+					Segment->SetMaterial(Slot, Material);
+				}
+			}
+			Segment->SetForwardAxis(MeshAxis, false);
+			Segment->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			Segment->SetGenerateOverlapEvents(false);
+			Segment->SetCastShadow(true);
+			Segment->SetStartScale(CrossScale, false);
+			Segment->SetEndScale(CrossScale, false);
+
+			const FVector P0 = SplineToParent.TransformPosition(Spline->GetLocationAtDistanceAlongSpline(From, ESplineCoordinateSpace::Local));
+			const FVector P1 = SplineToParent.TransformPosition(Spline->GetLocationAtDistanceAlongSpline(To, ESplineCoordinateSpace::Local));
+			const FVector T0 = SplineToParent.TransformVector(Spline->GetTangentAtDistanceAlongSpline(From, ESplineCoordinateSpace::Local).GetSafeNormal() * (To - From));
+			const FVector T1 = SplineToParent.TransformVector(Spline->GetTangentAtDistanceAlongSpline(To, ESplineCoordinateSpace::Local).GetSafeNormal() * (To - From));
+
+			if (bReverseAxis)
+			{
+				Segment->SetStartAndEnd(P1, -T1, P0, -T0, true);
+			}
+			else
+			{
+				Segment->SetStartAndEnd(P0, T0, P1, T1, true);
+			}
+			Segment->RegisterComponent();
+			Segments.Add(Segment);
 		}
 
-		const FTransform ParentToSegment = Segment->GetRelativeTransform().Inverse();
-		const FTransform SplineToParent = Spline->GetRelativeTransform();
-		const FVector P0 = ParentToSegment.TransformPosition(SplineToParent.TransformPosition(
-			Spline->GetLocationAtDistanceAlongSpline(From, ESplineCoordinateSpace::Local)));
-		const FVector P1 = ParentToSegment.TransformPosition(SplineToParent.TransformPosition(
-			Spline->GetLocationAtDistanceAlongSpline(To, ESplineCoordinateSpace::Local)));
-		const FVector T0 = ParentToSegment.TransformVector(SplineToParent.TransformVector(
-			Spline->GetTangentAtDistanceAlongSpline(From, ESplineCoordinateSpace::Local).GetSafeNormal() * (To - From)));
-		const FVector T1 = ParentToSegment.TransformVector(SplineToParent.TransformVector(
-			Spline->GetTangentAtDistanceAlongSpline(To, ESplineCoordinateSpace::Local).GetSafeNormal() * (To - From)));
-
-		Segment->SetStartAndEnd(P0, T0, P1, T1, true);
-		AddInstanceComponent(Segment);
-		Segment->RegisterComponent();
-		Segments.Add(Segment);
+		if (bPartial)
+		{
+			break;
+		}
 	}
 }
 
