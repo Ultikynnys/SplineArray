@@ -8,6 +8,7 @@
 
 class USplineComponent;
 class UInstancedStaticMeshComponent;
+class USplineMeshComponent;
 class UStaticMesh;
 
 /** How copies of the mesh are distributed along the spline. */
@@ -18,7 +19,7 @@ enum class ESplineArrayDistribution : uint8
 	ByCount        UMETA(DisplayName = "By Count"),
 	/** Place a copy every "Spacing" cm until the end of the spline is reached. */
 	BySpacing      UMETA(DisplayName = "By Spacing"),
-	/** Fit as many copies of "Item Length" as possible along the spline. */
+	/** Automatically tile the measured mesh along the spline. */
 	FitAlongSpline UMETA(DisplayName = "Fit Along Spline"),
 	/** Chain copies exactly end to end using the mesh's length along its Forward Axis, plus a +/-5% offset. */
 	EndToEnd     UMETA(DisplayName = "End To End")
@@ -35,9 +36,10 @@ enum class ESplineArrayForwardAxis : uint8
 
 /**
  * Repeats a static mesh along a spline component, in the spirit of Blender's
- * Array + Curve modifiers. All copies are rendered through a single
- * InstancedStaticMeshComponent, so even large counts are cheap.
+ * Array + Curve modifiers. Copies use spline mesh components so each mesh bends
+ * along its interval.
  *
+ * Each copy deforms along its interval of the spline.
  * The layout rebuilds automatically when the actor is constructed, when any
  * property changes, and (in the editor) when the spline is edited.
  */
@@ -91,14 +93,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Source")
 	ESplineArrayForwardAxis ForwardAxis = ESplineArrayForwardAxis::X;
 
-	/** Read-only: the source mesh's length (cm) along its Forward Axis, used by the End To End mode. */
+	/** Read-only: the source mesh's length (cm) along its Forward Axis. */
 	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Spline Array|Source")
 	float MeshAxisLength = 0.0f;
 
 	// --- Distribution ---
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution")
-	ESplineArrayDistribution Distribution = ESplineArrayDistribution::ByCount;
+	ESplineArrayDistribution Distribution = ESplineArrayDistribution::EndToEnd;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array|Distribution", meta = (ClampMin = "1", UIMin = "1", EditCondition = "Distribution == ESplineArrayDistribution::ByCount", EditConditionHides))
 	int32 Count = 10;
@@ -175,6 +177,9 @@ private:
 
 	/** Rotation that maps the mesh's Forward Axis onto the spline's forward (X) direction. */
 	FQuat ComputeForwardAxisCorrection() const;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USplineMeshComponent>> Segments;
 
 	/** Resolves the distance between copies and, out, how many copies to place. Returns 0 if it can't be resolved. */
 	float ResolveSpacing(int32& OutCount) const;
