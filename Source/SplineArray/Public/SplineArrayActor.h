@@ -38,14 +38,6 @@ enum class ESplineArrayForwardAxis : uint8
 	NegativeZ UMETA(DisplayName = "-Z")
 };
 
-/**
- * Repeats a static mesh along a spline component, in the spirit of Blender's
- * Array + Curve modifiers. Copies use spline mesh components so each mesh bends
- * along its interval.
- *
- * The layout rebuilds automatically when the actor is constructed, when any
- * property changes, and (in the editor) when the spline is edited.
- */
 UCLASS(Blueprintable, ClassGroup = (SplineArray), meta = (DisplayName = "Spline Array Actor"))
 class SPLINEARRAY_API ASplineArrayActor : public AActor
 {
@@ -54,14 +46,12 @@ class SPLINEARRAY_API ASplineArrayActor : public AActor
 public:
 	ASplineArrayActor();
 
-	//~ Begin AActor
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void PostLoad() override;
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
-	//~ End AActor
 
 	/** Recomputes the generated mesh from the spline and settings. */
 	UFUNCTION(BlueprintCallable, Category = "Spline Array")
@@ -76,8 +66,6 @@ public:
 	int32 GetResolvedCount() const;
 
 protected:
-	// --- Components ---
-
 	UPROPERTY()
 	TObjectPtr<USceneComponent> SceneRoot;
 
@@ -86,8 +74,6 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UInstancedStaticMeshComponent> Instances;
-
-	// --- Source ---
 
 	/** Mesh that gets repeated. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Mesh"))
@@ -100,8 +86,6 @@ protected:
 	/** Read-only: the source mesh's length (cm) along its Forward Axis. */
 	UPROPERTY(Transient)
 	float MeshAxisLength = 0.0f;
-
-	// --- Distribution ---
 
 	UPROPERTY()
 	ESplineArrayDistribution Distribution = ESplineArrayDistribution::FitAlongSpline;
@@ -131,8 +115,6 @@ protected:
 	UPROPERTY()
 	float EndOffset = 0.0f;
 
-	// --- Orientation / transform ---
-
 	/** Legacy setting retained for existing actors. */
 	UPROPERTY()
 	bool bAlignToTangent = true;
@@ -154,8 +136,6 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Axis Offset (%)", ClampMin = "-5.0", ClampMax = "5.0", UIMin = "-5.0", UIMax = "5.0"))
 	float AxisOffsetPercent = 0.0f;
-
-	// --- Randomisation ---
 
 	UPROPERTY()
 	bool bRandomizeYaw = false;

@@ -5,10 +5,6 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-/**
- * Runtime module for the SplineArray plugin.
- * The actual logic lives in ASplineArrayActor; this module only registers itself.
- */
 class FSplineArrayModule : public IModuleInterface
 {
 public:

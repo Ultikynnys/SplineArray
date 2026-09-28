@@ -45,7 +45,6 @@ void ASplineArrayActor::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	// Give a brand-new actor a usable two-point spline.
 	if (Spline && Spline->GetNumberOfSplinePoints() < 2)
 	{
 		Spline->ClearSplinePoints(false);
@@ -66,7 +65,6 @@ void ASplineArrayActor::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 #if WITH_EDITOR
-	// Spline-point edits do not raise PostEditChangeProperty, so watch the geometry.
 	if (Spline)
 	{
 		const uint32 Hash = ComputeSplineHash();
@@ -161,7 +159,6 @@ FQuat ASplineArrayActor::ComputeForwardAxisCorrection() const
 		break;
 	}
 
-	// Rotation that maps the mesh's forward axis onto the spline's local +X (the tangent).
 	return FQuat::FindBetweenNormals(Forward, FVector::ForwardVector);
 }
 
@@ -263,9 +260,6 @@ void ASplineArrayActor::Rebuild()
 	const float MeshAxisMin = static_cast<float>(MeshBounds.Min[AxisIndex]);
 	const float MeshAxisMax = static_cast<float>(MeshBounds.Max[AxisIndex]);
 
-	// A single SplineMeshComponent renders one cubic between its endpoints, so a copy that
-	// spans several spline control points cuts the corner. Breaking every copy at the
-	// control-point distances makes each sub-segment lie inside one spline cubic and hug the curve.
 	TArray<float> SplinePointDistances;
 	{
 		const int32 NumSplinePoints = Spline->GetNumberOfSplinePoints();
@@ -326,8 +320,6 @@ void ASplineArrayActor::Rebuild()
 			Segment->SetStaticMesh(SegmentMesh);
 			if (Material)
 			{
-				// Bisected meshes are built from a mesh description and carry no material slots,
-				// so drive the override from the material itself instead of the slot count.
 				const int32 NumMaterialSlots = FMath::Max(1, SegmentMesh->GetStaticMaterials().Num());
 				for (int32 Slot = 0; Slot < NumMaterialSlots; ++Slot)
 				{
