@@ -1,6 +1,6 @@
 # Spline Array (Unreal Engine 5 plugin)
 
-Repeats a static mesh along a spline — the Unreal equivalent of Blender's **Array + Curve**
+Repeats a static mesh along a spline: the Unreal equivalent of Blender's **Array + Curve**
 modifiers. Select a mesh, edit the single Spline component, and copies bend along it.
 
 Each copy is a `USplineMeshComponent`, deformed between two distances on the spline.
@@ -33,10 +33,10 @@ The actor fits repeated, spline-deformed copies using the source mesh's length a
 
 | Blender | This plugin |
 | --- | --- |
-| Array modifier — Relative offset | `Axis Offset (%)` |
-| Array modifier — Fit Curve | Automatic mesh-length tiling |
-| Curve modifier — deform axis | `Axis` (+ or -) |
-| Curve modifier — curve path | `Spline` component |
+| Array modifier (Relative offset) | `Axis Offset (%)` |
+| Array modifier (Fit Curve) | Automatic mesh-length tiling |
+| Curve modifier (deform axis) | `Axis` (+ or -) |
+| Curve modifier (curve path) | `Spline` component |
 
 ## Properties
 
