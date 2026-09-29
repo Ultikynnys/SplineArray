@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 6,
-	"VersionName": "1.0.6",
+	"Version": 7,
+	"VersionName": "1.0.7",
 	"FriendlyName": "Spline Array",
 	"Description": "Blender-style Array + Curve for Unreal: repeat a mesh along a spline with alignment, spacing, fitting and randomisation.",
 	"Category": "Geometry",

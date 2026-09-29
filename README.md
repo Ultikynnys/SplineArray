@@ -72,7 +72,7 @@ The published releases since 1.0.2 ship with `bUsePrecompiled = true`, so a C++ 
 ## Usage
 
 1. Place a **Spline Array Actor** in the level (*Place Actors → All Classes → Spline Array Actor*).
-2. Set **Mesh**, **Axis** (+X/+Y/+Z or -X/-Y/-Z), **Mesh Scale**, **Material**, and **Axis Offset (%)** in the actor's **Spline Array** category.
+2. Set **Mesh**, **Axis** (+X/+Y/+Z or -X/-Y/-Z), **Point Type**, **Mesh Scale**, **Material**, and **Axis Offset (%)** in the actor's **Spline Array** category.
 3. Select the **Spline** component to edit its points. Editing the spline marks the actor dirty; press **Force Rebuild** on the actor to regenerate the meshes and their LODs (rebuilding is explicit because slicing every LOD is expensive).
 
 ### Fit along spline
@@ -87,10 +87,11 @@ The actor fits repeated, spline-deformed copies using the source mesh's length a
 | Array modifier (Fit Curve) | Automatic mesh-length tiling |
 | Curve modifier (deform axis) | `Axis` (+ or -) |
 | Curve modifier (curve path) | `Spline` component |
+| Curve interpolation (Linear / Curve) | `Point Type` |
 
 ## Properties
 
-The actor's **Spline Array** category has five controls: Mesh, Axis, Mesh Scale, Material, and Axis Offset (%). Leave Material empty to use the source mesh's original materials; assigning a material overrides every material slot on the generated copies. Property edits mark the actor dirty; press **Force Rebuild** to apply them. Generated mesh components and saved legacy properties are not shown in the actor Details controls.
+The actor's **Spline Array** category has six controls: Mesh, Axis, Point Type, Mesh Scale, Material, and Axis Offset (%). Leave Material empty to use the source mesh's original materials; assigning a material overrides every material slot on the generated copies. **Point Type** sets the interpolation of every spline point, so **Linear** runs the copies in straight segments while **Curve** bends them along a bezier; it overrides any per-point interpolation set on the Spline component. Property edits mark the actor dirty; press **Force Rebuild** to apply them. Generated mesh components and saved legacy properties are not shown in the actor Details controls.
 
 ## Extending
 

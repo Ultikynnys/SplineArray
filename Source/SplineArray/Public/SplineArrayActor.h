@@ -38,6 +38,20 @@ enum class ESplineArrayForwardAxis : uint8
 	NegativeZ UMETA(DisplayName = "-Z")
 };
 
+/** How the spline is interpolated between its control points; shapes the bezier curve the copies follow. */
+UENUM(BlueprintType)
+enum class ESplineArrayPointType : uint8
+{
+	/** Smooth bezier curve through the control points (default). */
+	Curve        UMETA(DisplayName = "Curve"),
+	/** Straight line segments between the control points. */
+	Linear       UMETA(DisplayName = "Linear"),
+	/** Steps between the control points with no interpolation. */
+	Constant     UMETA(DisplayName = "Constant"),
+	/** Smooth curve kept inside the control polygon. */
+	CurveClamped UMETA(DisplayName = "Curve (Clamped)")
+};
+
 UCLASS(Blueprintable, ClassGroup = (SplineArray), meta = (DisplayName = "Spline Array Actor"))
 class SPLINEARRAY_API ASplineArrayActor : public AActor
 {
@@ -89,6 +103,10 @@ protected:
 	/** Mesh axis deformed along the spline; negative directions reverse the mesh. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Axis"))
 	ESplineArrayForwardAxis ForwardAxis = ESplineArrayForwardAxis::X;
+
+	/** Interpolation applied to every spline point; "Linear" runs the copies in straight segments instead of a bezier curve. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Point Type"))
+	ESplineArrayPointType PointType = ESplineArrayPointType::Curve;
 
 	/** Read-only: the source mesh's length (cm) along its Forward Axis. */
 	UPROPERTY(Transient)

@@ -23,6 +23,22 @@ namespace
 	{
 		return (FDateTime::UtcNow() - Since).GetTotalMilliseconds();
 	}
+
+	ESplinePointType::Type ToEnginePointType(ESplineArrayPointType PointType)
+	{
+		switch (PointType)
+		{
+		case ESplineArrayPointType::Linear:
+			return ESplinePointType::Linear;
+		case ESplineArrayPointType::Constant:
+			return ESplinePointType::Constant;
+		case ESplineArrayPointType::CurveClamped:
+			return ESplinePointType::CurveClamped;
+		case ESplineArrayPointType::Curve:
+		default:
+			return ESplinePointType::Curve;
+		}
+	}
 }
 
 ASplineArrayActor::ASplineArrayActor()
@@ -69,10 +85,6 @@ void ASplineArrayActor::OnConstruction(const FTransform& Transform)
 		Spline->UpdateSpline();
 	}
 
-#if WITH_EDITORONLY_DATA
-	CachedSplineHash = ComputeSplineHash();
-#endif
-
 	const bool bEditorWorld = GetWorld() && GetWorld()->WorldType == EWorldType::Editor;
 #if WITH_EDITOR
 	if (!bEditorWorld || Segments.Num() == 0 || bSplineDirty)
@@ -82,6 +94,10 @@ void ASplineArrayActor::OnConstruction(const FTransform& Transform)
 	}
 #else
 	Rebuild();
+#endif
+
+#if WITH_EDITORONLY_DATA
+	CachedSplineHash = ComputeSplineHash();
 #endif
 }
 
@@ -335,6 +351,22 @@ void ASplineArrayActor::Rebuild()
 	if (!SourceMesh || !Spline || MeshAxisLength <= KINDA_SMALL_NUMBER)
 	{
 		return;
+	}
+
+	const ESplinePointType::Type EnginePointType = ToEnginePointType(PointType);
+	const int32 PointCount = Spline->GetNumberOfSplinePoints();
+	bool bPointTypeChanged = false;
+	for (int32 PointIndex = 0; PointIndex < PointCount; ++PointIndex)
+	{
+		if (Spline->GetSplinePointType(PointIndex) != EnginePointType)
+		{
+			Spline->SetSplinePointType(PointIndex, EnginePointType, false);
+			bPointTypeChanged = true;
+		}
+	}
+	if (bPointTypeChanged)
+	{
+		Spline->UpdateSpline();
 	}
 
 	const float Start = FMath::Max(0.0f, StartOffset);
