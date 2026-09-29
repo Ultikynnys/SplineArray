@@ -109,7 +109,8 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 			{
 				return SourceMesh;
 			}
-			Descriptions.Add(Descriptions.Last());
+			const FMeshDescription* PreviousDescription = Descriptions.Last();
+			Descriptions.Add(PreviousDescription);
 			continue;
 		}
 
@@ -269,7 +270,8 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 		{
 			return SourceMesh;
 		}
-		Descriptions.Add(Descriptions.Last());
+		const FMeshDescription* PreviousDescription = Descriptions.Last();
+		Descriptions.Add(PreviousDescription);
 		continue;
 	}
 
