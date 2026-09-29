@@ -9,6 +9,7 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "Engine/World.h"
 #include "UObject/Package.h"
+#include "UObject/ObjectSaveContext.h"
 #include "Materials/MaterialInterface.h"
 #include "MeshDescription.h"
 #include "Misc/CommandLine.h"
@@ -65,6 +66,25 @@ void ASplineArrayActor::PostLoad()
 	}
 	LengthOffset = 0.0f;
 	Distribution = ESplineArrayDistribution::FitAlongSpline;
+
+	if (HasForeignBakedMeshes())
+	{
+		BakedSegments.Reset();
+		BakedSegmentKeys.Reset();
+	}
+}
+
+bool ASplineArrayActor::HasForeignBakedMeshes() const
+{
+	const UPackage* const ActorPackage = GetOutermost();
+	for (const TObjectPtr<UStaticMesh>& Mesh : BakedSegments)
+	{
+		if (Mesh && Mesh->GetOutermost() != ActorPackage)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void ASplineArrayActor::OnConstruction(const FTransform& Transform)
@@ -161,6 +181,17 @@ void ASplineArrayActor::BeginPlay()
 }
 
 #if WITH_EDITOR
+void ASplineArrayActor::PreSave(FObjectPreSaveContext SaveContext)
+{
+	Super::PreSave(SaveContext);
+	if (HasForeignBakedMeshes())
+	{
+		UE_LOG(LogSplineArray, Warning, TEXT("%s: baked segments reference another map package (the map was moved); clearing the bake so the save succeeds. It rebuilds automatically."), *GetName());
+		BakedSegments.Reset();
+		BakedSegmentKeys.Reset();
+	}
+}
+
 void ASplineArrayActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
@@ -427,6 +458,11 @@ void ASplineArrayActor::Rebuild()
 		const UStaticMesh* Baked = BakedSegments.IsValidIndex(Index) ? BakedSegments[Index].Get() : nullptr;
 		const bool bWhole = NewKeys[Index].IsEmpty();
 		if (bWhole ? Baked != nullptr : Baked == nullptr || !Baked->bAllowCPUAccess)
+		{
+			bUseBaked = false;
+		}
+		const bool bEditorWorld = GetWorld() && GetWorld()->WorldType == EWorldType::Editor;
+		if (bEditorWorld && Baked && Baked->GetOutermost() != GetOutermost())
 		{
 			bUseBaked = false;
 		}

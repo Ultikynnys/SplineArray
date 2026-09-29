@@ -62,6 +62,7 @@ public:
 	virtual void BeginPlay() override;
 	virtual void PostLoad() override;
 #if WITH_EDITOR
+	virtual void PreSave(FObjectPreSaveContext SaveContext) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
@@ -204,5 +205,8 @@ private:
 
 	/** Resolves the distance between copies and, out, how many copies to place. Returns 0 if it can't be resolved. */
 	float ResolveSpacing(int32& OutCount) const;
+
+	/** True when any baked segment mesh lives in a package other than this actor's map package. */
+	bool HasForeignBakedMeshes() const;
 
 };
