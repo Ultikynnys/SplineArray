@@ -19,9 +19,24 @@ Copy the `SplineArray` folder into your project's `Plugins/` directory, then ena
 <YourProject>/Plugins/SplineArray/
 ```
 
-From source, compile the plugin with a C++ toolchain. To avoid needing a toolchain, download the
-release zip and drop its `SplineArray` folder into the same location; the precompiled editor
-binaries make the plugin load in the editor immediately.
+There are two ways to get it there, and the right one depends on whether the machine has a C++ toolchain:
+
+* **Precompiled (no toolchain).** Download the release zip and copy its `SplineArray` folder to the path above. The bundled `Binaries/` make the plugin load in the editor immediately.
+* **From source (needs a toolchain).** Clone this repository to the path above. Opening the project compiles the plugin, so this requires a C++ toolchain (Visual Studio Build Tools).
+
+Do not hand a source clone to someone without a toolchain: opening the project triggers a compile that will fail.
+
+### Who needs what
+
+A C++ toolchain is only ever needed to compile and link code. It is never needed to open the editor or to run a packaged game.
+
+| Who | Editor and Play-In-Editor | Package a game |
+| --- | --- | --- |
+| Level designer, artist, other non-programmers (no toolchain) | Yes, with the precompiled release | No |
+| Programmer or builder (with toolchain) | Yes | Yes, from a C++ project or an engine install |
+| Player of a packaged game | n/a | Runs it, needs nothing |
+
+So a mixed team works like this: the non-technical users install the precompiled release and use the plugin in the editor and PIE with no toolchain, and one programmer with a toolchain packages the game.
 
 ### Packaging a game
 
@@ -32,10 +47,26 @@ blueprint-only project the editor loads the plugin but the packaged game reports
 
 To package a game with Spline Array, one of these must hold:
 
-* The project is a C++ project, so UE builds and links the plugin module into the game. Adding any C++ class converts a blueprint-only project to a C++ project, and this needs a C++ toolchain.
-* The plugin is installed under the engine instead of the project, for example `Engine/Plugins/Marketplace/SplineArray`, so the engine includes the module in its game target. This needs write access to the engine directory.
+* The project is a C++ project, so UE builds and links the plugin module into the game. Adding any C++ class converts a blueprint-only project to a C++ project. Whoever does this needs a C++ toolchain.
+* The plugin is installed under the engine instead of the project, for example `Engine/Plugins/Marketplace/SplineArray`, so the engine includes the module in its game target. This needs write access to the engine directory, and the engine's game binaries still have to be relinked to include the plugin.
 
-No plugin-side setting changes this; it is how UE builds the game target.
+Neither route removes the toolchain requirement from whoever packages; they differ only in where the plugin lives.
+
+### For plugin builders (binary distribution)
+
+A precompiled plugin is only linked into a game when UnrealBuildTool is told to use the precompiled binaries instead of rebuilding. In the shipped module's `Build.cs`:
+
+```csharp
+bUsePrecompiled = true;
+```
+
+Without it, UnrealBuildTool discards the precompiled objects and tries to build from source, which fails when the source is absent, and the module is silently left out of the game. Related pieces:
+
+* `PrecompileForTargets = PrecompileTargetsType.Any;` is the build-time switch that produces the game artifacts in the first place.
+* Keep `Intermediate/Build/Win64/x64/UnrealGame/` (the game-side `.obj` plus the `.precompiled` manifest). Delete it and the plugin still works in the editor, but packaging fails.
+* `"Installed": true` in the `.uplugin` marks the plugin as installed and prebuilt, so the engine does not compile it from source and treats it as not authored in the project. On its own it does not put the module into the game.
+
+The published release predates the `bUsePrecompiled` line, so a C++ project will not link the precompiled module until the plugin ships with it.
 
 ## Usage
 
