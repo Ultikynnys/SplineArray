@@ -6,18 +6,36 @@ modifiers. Select a mesh, edit the single Spline component, and copies bend alon
 Each copy is a `USplineMeshComponent`, deformed between two distances on the spline.
 The mesh bounding-box length along `Forward Axis` determines the default interval.
 
-* **Engine:** Unreal Engine 5.6.1. Prebuilt Win64 editor binaries are included; source builds
-  require a C++ toolchain. Binary installations need only the `.uplugin` and `Binaries/`.
+* **Engine:** Unreal Engine 5.6.1 (Win64).
+* **Distribution:** this repository is source only. A precompiled Win64 build is published on the
+  Releases page for users without a C++ toolchain.
 * **License:** MIT.
 
 ## Install
 
-1. Copy the `SplineArray` folder into your project's `Plugins/` directory:
-   ```
-   <YourProject>/Plugins/SplineArray/
-   ```
-2. For the included Win64 editor build, launch UE 5.6.1. For a source build, compile the plugin using your own C++ toolchain.
-3. Enable **Spline Array** under *Edit → Plugins* if it isn't already on.
+Copy the `SplineArray` folder into your project's `Plugins/` directory, then enable **Spline Array** under *Edit → Plugins*:
+
+```
+<YourProject>/Plugins/SplineArray/
+```
+
+From source, compile the plugin with a C++ toolchain. To avoid needing a toolchain, download the
+release zip and drop its `SplineArray` folder into the same location; the precompiled editor
+binaries make the plugin load in the editor immediately.
+
+### Packaging a game
+
+A blueprint-only project cannot include this plugin in a packaged build. UE compiles and links a
+C++ plugin's runtime module into the game only when the project itself has C++ source, so on a
+blueprint-only project the editor loads the plugin but the packaged game reports
+`module SplineArray could not be found`.
+
+To package a game with Spline Array, one of these must hold:
+
+* The project is a C++ project, so UE builds and links the plugin module into the game. Adding any C++ class converts a blueprint-only project to a C++ project, and this needs a C++ toolchain.
+* The plugin is installed under the engine instead of the project, for example `Engine/Plugins/Marketplace/SplineArray`, so the engine includes the module in its game target. This needs write access to the engine directory.
+
+No plugin-side setting changes this; it is how UE builds the game target.
 
 ## Usage
 
