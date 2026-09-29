@@ -47,6 +47,7 @@ public:
 	ASplineArrayActor();
 
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void PostLoad() override;
 #if WITH_EDITOR
@@ -177,6 +178,14 @@ private:
 	/** Generated bisected meshes (source mesh + slab), held for the current layout. */
 	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<UStaticMesh>> BisectCache;
+
+	/** Sliced meshes saved into the map package, in segment order; runtime uses these as-is. */
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMesh>> BakedSegments;
+
+	/** BisectCacheKey of each baked mesh; must match the current layout for reuse. */
+	UPROPERTY()
+	TArray<FString> BakedSegmentKeys;
 
 	/** Resolves the distance between copies and, out, how many copies to place. Returns 0 if it can't be resolved. */
 	float ResolveSpacing(int32& OutCount) const;

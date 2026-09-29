@@ -2,6 +2,8 @@
 
 #include "SplineArray.h"
 
+DEFINE_LOG_CATEGORY(LogSplineArray);
+
 #define LOCTEXT_NAMESPACE "FSplineArrayModule"
 
 void FSplineArrayModule::StartupModule()
