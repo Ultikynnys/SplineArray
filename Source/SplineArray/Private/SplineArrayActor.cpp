@@ -30,8 +30,6 @@ namespace
 		{
 		case ESplineArrayPointType::Linear:
 			return ESplinePointType::Linear;
-		case ESplineArrayPointType::Constant:
-			return ESplinePointType::Constant;
 		case ESplineArrayPointType::CurveClamped:
 			return ESplinePointType::CurveClamped;
 		case ESplineArrayPointType::Curve:
@@ -43,11 +41,7 @@ namespace
 
 ASplineArrayActor::ASplineArrayActor()
 {
-#if WITH_EDITORONLY_DATA
-	PrimaryActorTick.bCanEverTick = true;
-#else
 	PrimaryActorTick.bCanEverTick = false;
-#endif
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
@@ -87,17 +81,12 @@ void ASplineArrayActor::OnConstruction(const FTransform& Transform)
 
 	const bool bEditorWorld = GetWorld() && GetWorld()->WorldType == EWorldType::Editor;
 #if WITH_EDITOR
-	if (!bEditorWorld || Segments.Num() == 0 || bSplineDirty)
+	if (!bEditorWorld || Segments.Num() == 0)
 	{
 		Rebuild();
-		bSplineDirty = false;
 	}
 #else
 	Rebuild();
-#endif
-
-#if WITH_EDITORONLY_DATA
-	CachedSplineHash = ComputeSplineHash();
 #endif
 }
 
@@ -171,65 +160,19 @@ void ASplineArrayActor::BeginPlay()
 #endif
 }
 
-void ASplineArrayActor::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
-#if WITH_EDITORONLY_DATA
-	if (Spline)
-	{
-		const uint32 Hash = ComputeSplineHash();
-		if (Hash != CachedSplineHash)
-		{
-			CachedSplineHash = Hash;
-			bSplineDirty = true;
-		}
-	}
-#endif
-}
-
 #if WITH_EDITOR
 void ASplineArrayActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
-	if (PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ASplineArrayActor, MeshAxisLength))
-	{
-		return;
-	}
-	bSplineDirty = true;
 }
 
 void ASplineArrayActor::ForceRebuild()
 {
-	bSplineDirty = false;
 	Rebuild();
 }
 #endif
 
-#if WITH_EDITORONLY_DATA
-uint32 ASplineArrayActor::ComputeSplineHash() const
-{
-	if (!Spline)
-	{
-		return 0;
-	}
 
-	uint32 Hash = GetTypeHash(Spline->GetNumberOfSplinePoints());
-	Hash = HashCombine(Hash, GetTypeHash(FMath::RoundToInt(Spline->GetSplineLength() * 100.0f)));
-	Hash = HashCombine(Hash, GetTypeHash(Spline->GetRelativeLocation()));
-	Hash = HashCombine(Hash, GetTypeHash(Spline->IsClosedLoop() ? 1 : 0));
-
-	const int32 NumPoints = Spline->GetNumberOfSplinePoints();
-	for (int32 Index = 0; Index < NumPoints; ++Index)
-	{
-		Hash = HashCombine(Hash, GetTypeHash(Spline->GetLocationAtSplinePoint(Index, ESplineCoordinateSpace::Local)));
-		Hash = HashCombine(Hash, GetTypeHash(Spline->GetArriveTangentAtSplinePoint(Index, ESplineCoordinateSpace::Local)));
-		Hash = HashCombine(Hash, GetTypeHash(Spline->GetLeaveTangentAtSplinePoint(Index, ESplineCoordinateSpace::Local)));
-		Hash = HashCombine(Hash, GetTypeHash(Spline->GetRotationAtSplinePoint(Index, ESplineCoordinateSpace::Local).Quaternion()));
-		Hash = HashCombine(Hash, GetTypeHash(Spline->GetScaleAtSplinePoint(Index)));
-	}
-	return Hash;
-}
-#endif
 
 float ASplineArrayActor::ComputeMeshLength() const
 {

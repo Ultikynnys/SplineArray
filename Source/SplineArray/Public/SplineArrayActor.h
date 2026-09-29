@@ -46,8 +46,6 @@ enum class ESplineArrayPointType : uint8
 	Curve        UMETA(DisplayName = "Curve"),
 	/** Straight line segments between the control points. */
 	Linear       UMETA(DisplayName = "Linear"),
-	/** Steps between the control points with no interpolation. */
-	Constant     UMETA(DisplayName = "Constant"),
 	/** Smooth curve kept inside the control polygon. */
 	CurveClamped UMETA(DisplayName = "Curve (Clamped)")
 };
@@ -62,7 +60,6 @@ public:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaSeconds) override;
 	virtual void PostLoad() override;
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -208,11 +205,4 @@ private:
 	/** Resolves the distance between copies and, out, how many copies to place. Returns 0 if it can't be resolved. */
 	float ResolveSpacing(int32& OutCount) const;
 
-#if WITH_EDITORONLY_DATA
-	/** Hash of the spline geometry, used to detect edits that don't raise PostEditChangeProperty. */
-	uint32 ComputeSplineHash() const;
-	uint32 CachedSplineHash = 0;
-	/** True when spline edits are waiting for an explicit rebuild. */
-	bool bSplineDirty = false;
-#endif
 };
