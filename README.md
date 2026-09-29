@@ -66,7 +66,7 @@ Without it, UnrealBuildTool discards the precompiled objects and tries to build 
 * Keep `Intermediate/Build/Win64/x64/UnrealGame/` (the game-side `.obj` plus the `.precompiled` manifest). Delete it and the plugin still works in the editor, but packaging fails.
 * `"Installed": true` in the `.uplugin` marks the plugin as installed and prebuilt, so the engine does not compile it from source and treats it as not authored in the project. On its own it does not put the module into the game.
 
-The published release ships with `bUsePrecompiled = true`, so a C++ project links the precompiled module directly. This line was missing from release 1.0.1.
+The published releases since 1.0.2 ship with `bUsePrecompiled = true`, so a C++ project links the precompiled module directly. This line was missing from release 1.0.1.
 
 ## Usage
 

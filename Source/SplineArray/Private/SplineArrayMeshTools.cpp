@@ -3,6 +3,7 @@
 #include "SplineArrayMeshTools.h"
 
 #include "Engine/StaticMesh.h"
+#include "StaticMeshResources.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
 #include "UObject/Package.h"
@@ -94,15 +95,45 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 		}
 	}
 
-	const FMeshDescription* SourceDescription = SourceMesh->GetMeshDescription(0);
-	if (!SourceDescription)
+	TArray<TUniquePtr<FMeshDescription>> CutDescriptions;
+	TArray<const FMeshDescription*> Descriptions;
+	const int32 NumLODs = SourceMesh->GetNumLODs();
+	CutDescriptions.Reserve(NumLODs);
+	Descriptions.Reserve(NumLODs);
+	for (int32 LODIndex = 0; LODIndex < NumLODs; ++LODIndex)
 	{
-		return SourceMesh;
-	}
+		const FMeshDescription* SourceDescription = SourceMesh->GetMeshDescription(LODIndex);
+		if (!SourceDescription)
+		{
+			if (LODIndex == 0)
+			{
+				return SourceMesh;
+			}
+			Descriptions.Add(Descriptions.Last());
+			continue;
+		}
 
 	UE::Geometry::FDynamicMesh3 Source;
 	{
+		FStaticMeshConstAttributes SourceAttributes(*SourceDescription);
+		const auto SourceSlotNames = SourceAttributes.GetPolygonGroupMaterialSlotNames();
+		TArray<int32> GroupToMaterialIndex;
+		GroupToMaterialIndex.Init(0, SourceDescription->PolygonGroups().GetArraySize());
+		for (const FPolygonGroupID GroupID : SourceDescription->PolygonGroups().GetElementIDs())
+		{
+			int32 MaterialIndex = SourceMesh->GetMaterialIndexFromImportedMaterialSlotName(SourceSlotNames[GroupID]);
+			if (MaterialIndex == INDEX_NONE)
+			{
+				MaterialIndex = SourceMesh->GetMaterialIndex(SourceSlotNames[GroupID]);
+			}
+			if (MaterialIndex == INDEX_NONE)
+			{
+				MaterialIndex = SourceMesh->GetStaticMaterials().IsValidIndex(GroupID.GetValue()) ? GroupID.GetValue() : 0;
+			}
+			GroupToMaterialIndex[GroupID.GetValue()] = MaterialIndex;
+		}
 		FMeshDescriptionToDynamicMesh Converter;
+		Converter.SetPolygonGroupToMaterialIndexMap(GroupToMaterialIndex);
 		Converter.Convert(SourceDescription, Source);
 	}
 	if (!Source.HasAttributes())
@@ -125,6 +156,8 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 	Result.EnableAttributes();
 	Result.EnableTriangleGroups();
 	UE::Geometry::FDynamicMeshAttributeSet* ResultAttributes = Result.Attributes();
+	ResultAttributes->EnableMaterialID();
+	const UE::Geometry::FDynamicMeshMaterialAttribute* SourceMaterialIDs = Source.Attributes()->GetMaterialID();
 	TArray<UE::Geometry::FDynamicMeshUVOverlay*> ResultUVLayers;
 	if (ResultAttributes && SourceUVLayers.Num() > 0)
 	{
@@ -146,16 +179,15 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 		const int32 SourceCorners[3] = { SourceTriangle.A, SourceTriangle.B, SourceTriangle.C };
 		const int32 NumLayers = SourceUVLayers.Num();
 
-		int32 InsideCount = 0;
+		double TriangleMin = TNumericLimits<double>::Max();
+		double TriangleMax = TNumericLimits<double>::Lowest();
 		for (int32 Corner = 0; Corner < 3; ++Corner)
 		{
 			const double Coordinate = Source.GetVertex(SourceCorners[Corner])[AxisIndex];
-			if (Coordinate >= Lower && Coordinate <= Upper)
-			{
-				++InsideCount;
-			}
+			TriangleMin = FMath::Min(TriangleMin, Coordinate);
+			TriangleMax = FMath::Max(TriangleMax, Coordinate);
 		}
-		if (InsideCount == 0)
+		if (TriangleMax < Lower || TriangleMin > Upper)
 		{
 			continue;
 		}
@@ -214,6 +246,12 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 			{
 				continue;
 			}
+			if (SourceMaterialIDs)
+			{
+				int32 MaterialID = 0;
+				SourceMaterialIDs->GetValue(TriangleID, &MaterialID);
+				ResultAttributes->GetMaterialID()->SetValue(NewTriangleID, &MaterialID);
+			}
 			for (int32 Layer = 0; Layer < ResultUVLayers.Num(); ++Layer)
 			{
 				UE::Geometry::FDynamicMeshUVOverlay* ResultUV = ResultUVLayers[Layer];
@@ -227,7 +265,12 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 
 	if (Result.TriangleCount() == 0)
 	{
-		return SourceMesh;
+		if (LODIndex == 0)
+		{
+			return SourceMesh;
+		}
+		Descriptions.Add(Descriptions.Last());
+		continue;
 	}
 
 	if (ResultAttributes && ResultAttributes->PrimaryNormals())
@@ -237,20 +280,47 @@ UStaticMesh* SplineArrayMeshTools::BisectMesh(UStaticMesh* SourceMesh, int32 Axi
 		Normals.CopyToOverlay(ResultAttributes->PrimaryNormals());
 	}
 
-	FMeshDescription ResultDescription;
-	FStaticMeshAttributes ResultStaticAttributes(ResultDescription);
+	TUniquePtr<FMeshDescription> ResultDescription = MakeUnique<FMeshDescription>();
+	FStaticMeshAttributes ResultStaticAttributes(*ResultDescription);
 	ResultStaticAttributes.Register();
 	{
 		FDynamicMeshToMeshDescription Converter;
-		Converter.Convert(&Result, ResultDescription);
+		Converter.Convert(&Result, *ResultDescription);
+	}
+	FStaticMeshAttributes CutAttributes(*ResultDescription);
+	auto CutSlotNames = CutAttributes.GetPolygonGroupMaterialSlotNames();
+	const TArray<FStaticMaterial>& SourceMaterials = SourceMesh->GetStaticMaterials();
+	for (const FPolygonGroupID GroupID : ResultDescription->PolygonGroups().GetElementIDs())
+	{
+		if (SourceMaterials.IsValidIndex(GroupID.GetValue()))
+		{
+			CutSlotNames[GroupID] = SourceMaterials[GroupID.GetValue()].MaterialSlotName;
+		}
+	}
+	Descriptions.Add(ResultDescription.Get());
+	CutDescriptions.Add(MoveTemp(ResultDescription));
 	}
 
 	UStaticMesh* GeneratedMesh = NewObject<UStaticMesh>(GetTransientPackage(), NAME_None, RF_Transient);
 	GeneratedMesh->SetFlags(RF_Transient);
-
-	TArray<const FMeshDescription*> Descriptions;
-	Descriptions.Add(&ResultDescription);
-	GeneratedMesh->BuildFromMeshDescriptions(Descriptions);
+	GeneratedMesh->GetStaticMaterials() = SourceMesh->GetStaticMaterials();
+	UStaticMesh::FBuildMeshDescriptionsParams BuildParams;
+	BuildParams.bFastBuild = true;
+	BuildParams.bCommitMeshDescription = false;
+	if (!GeneratedMesh->BuildFromMeshDescriptions(Descriptions, BuildParams))
+	{
+		return SourceMesh;
+	}
+	if (const FStaticMeshRenderData* SourceRenderData = SourceMesh->GetRenderData())
+	{
+		if (FStaticMeshRenderData* GeneratedRenderData = GeneratedMesh->GetRenderData())
+		{
+			for (int32 LODIndex = 0; LODIndex < Descriptions.Num(); ++LODIndex)
+			{
+				GeneratedRenderData->ScreenSize[LODIndex] = SourceRenderData->ScreenSize[LODIndex];
+			}
+		}
+	}
 
 	Cache.Add(Key, GeneratedMesh);
 	return GeneratedMesh;

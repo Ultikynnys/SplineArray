@@ -168,9 +168,14 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<USplineMeshComponent>> Segments;
 
-	/** Generated bisected meshes (source mesh + slab), held for the current layout. */
+	/** Generated bisected meshes reused while the source mesh and axis remain unchanged. */
 	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<UStaticMesh>> BisectCache;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMesh> CachedSourceMesh;
+
+	int32 CachedAxisIndex = INDEX_NONE;
 
 	/** Resolves the distance between copies and, out, how many copies to place. Returns 0 if it can't be resolved. */
 	float ResolveSpacing(int32& OutCount) const;
