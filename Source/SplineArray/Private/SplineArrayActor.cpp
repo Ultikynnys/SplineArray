@@ -214,38 +214,31 @@ void ASplineArrayActor::Rebuild()
 		return;
 	}
 
-	TArray<USplineMeshComponent*> ExistingSegments;
-	TInlineComponentArray<USplineMeshComponent*> ActorSegments(this);
-	for (USplineMeshComponent* Segment : ActorSegments)
+	TInlineComponentArray<USplineMeshComponent*> ExistingSegments(this);
+	for (USplineMeshComponent* Segment : ExistingSegments)
 	{
 		if (IsValid(Segment))
 		{
-			ExistingSegments.Add(Segment);
+			Segment->DestroyComponent();
 		}
 	}
 	Segments.Empty();
+	Instances->ClearInstances();
+	Instances->SetStaticMesh(nullptr);
 	MeshAxisLength = ComputeMeshLength();
 
-	if (Instances->GetInstanceCount() > 0)
+	if (!SourceMesh || !Spline || MeshAxisLength <= KINDA_SMALL_NUMBER)
 	{
-		Instances->ClearInstances();
-	}
-	if (Instances->GetStaticMesh())
-	{
-		Instances->SetStaticMesh(nullptr);
+		return;
 	}
 
 	const float Start = FMath::Max(0.0f, StartOffset);
-	const float End = Spline ? Spline->GetSplineLength() - FMath::Max(0.0f, EndOffset) : 0.0f;
+	const float End = Spline->GetSplineLength() - FMath::Max(0.0f, EndOffset);
 	const float MeshScaleAlongAxis = ForwardAxis == ESplineArrayForwardAxis::X || ForwardAxis == ESplineArrayForwardAxis::NegativeX ? Scale.X
 		: ForwardAxis == ESplineArrayForwardAxis::Y || ForwardAxis == ESplineArrayForwardAxis::NegativeY ? Scale.Y : Scale.Z;
 	const float SegmentLength = MeshAxisLength * FMath::Abs(MeshScaleAlongAxis);
-	if (!SourceMesh || !Spline || SegmentLength <= KINDA_SMALL_NUMBER || End <= Start)
+	if (SegmentLength <= KINDA_SMALL_NUMBER || End <= Start)
 	{
-		for (USplineMeshComponent* Segment : ExistingSegments)
-		{
-			Segment->DestroyComponent();
-		}
 		return;
 	}
 
@@ -261,12 +254,7 @@ void ASplineArrayActor::Rebuild()
 	const float ScaleAlongAxis = FMath::Max(FMath::Abs(MeshScaleAlongAxis), KINDA_SMALL_NUMBER);
 	const float Step = FMath::Max(SegmentLength * (1.0f + FMath::Clamp(AxisOffsetPercent, -5.0f, 5.0f) / 100.0f), KINDA_SMALL_NUMBER);
 
-	if (CachedSourceMesh != SourceMesh || CachedAxisIndex != AxisIndex || BisectCache.Num() > 64)
-	{
-		BisectCache.Empty();
-		CachedSourceMesh = SourceMesh;
-		CachedAxisIndex = AxisIndex;
-	}
+	BisectCache.Empty();
 
 	const FBox MeshBounds = SourceMesh->GetBoundingBox();
 	const float MeshAxisMin = static_cast<float>(MeshBounds.Min[AxisIndex]);
@@ -283,7 +271,6 @@ void ASplineArrayActor::Rebuild()
 	}
 
 	TArray<float> CutDistances;
-	int32 SegmentIndex = 0;
 
 	for (float Cursor = Start; Cursor < End - KINDA_SMALL_NUMBER; Cursor += Step)
 	{
@@ -327,38 +314,22 @@ void ASplineArrayActor::Rebuild()
 
 			UStaticMesh* SegmentMesh = SplineArrayMeshTools::BisectMesh(SourceMesh, AxisIndex, SliceStart, SliceLength, BisectCache);
 
-			const bool bNewSegment = SegmentIndex >= ExistingSegments.Num();
-			USplineMeshComponent* Segment = bNewSegment
-				? NewObject<USplineMeshComponent>(this, NAME_None, RF_Transient)
-				: ExistingSegments[SegmentIndex];
-			if (bNewSegment)
-			{
-				Segment->SetupAttachment(SceneRoot);
-				Segment->SetMobility(EComponentMobility::Movable);
-				Segment->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-				Segment->SetGenerateOverlapEvents(false);
-				Segment->SetCastShadow(true);
-			}
-			if (Segment->GetStaticMesh() != SegmentMesh)
-			{
-				Segment->SetStaticMesh(SegmentMesh);
-			}
+			USplineMeshComponent* Segment = NewObject<USplineMeshComponent>(this, NAME_None, RF_Transient);
+			Segment->SetupAttachment(SceneRoot);
+			Segment->SetMobility(EComponentMobility::Movable);
+			Segment->SetStaticMesh(SegmentMesh);
 			if (Material)
 			{
 				const int32 NumMaterialSlots = FMath::Max(1, SegmentMesh->GetStaticMaterials().Num());
 				for (int32 Slot = 0; Slot < NumMaterialSlots; ++Slot)
 				{
-					if (Segment->GetMaterial(Slot) != Material)
-					{
-						Segment->SetMaterial(Slot, Material);
-					}
+					Segment->SetMaterial(Slot, Material);
 				}
 			}
-			else if (Segment->GetNumOverrideMaterials() > 0)
-			{
-				Segment->EmptyOverrideMaterials();
-			}
 			Segment->SetForwardAxis(MeshAxis, false);
+			Segment->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			Segment->SetGenerateOverlapEvents(false);
+			Segment->SetCastShadow(true);
 			Segment->SetStartScale(CrossScale, false);
 			Segment->SetEndScale(CrossScale, false);
 
@@ -375,23 +346,14 @@ void ASplineArrayActor::Rebuild()
 			{
 				Segment->SetStartAndEnd(P0, T0, P1, T1, true);
 			}
-			if (bNewSegment)
-			{
-				Segment->RegisterComponent();
-			}
+			Segment->RegisterComponent();
 			Segments.Add(Segment);
-			++SegmentIndex;
 		}
 
 		if (bPartial)
 		{
 			break;
 		}
-	}
-
-	for (int32 Index = SegmentIndex; Index < ExistingSegments.Num(); ++Index)
-	{
-		ExistingSegments[Index]->DestroyComponent();
 	}
 }
 
