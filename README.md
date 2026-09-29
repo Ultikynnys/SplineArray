@@ -65,7 +65,6 @@ Without it, UnrealBuildTool discards the precompiled objects and tries to build 
 * `PrecompileForTargets = PrecompileTargetsType.Any;` is the build-time switch that produces the game artifacts in the first place.
 * Keep `Intermediate/Build/Win64/x64/UnrealGame/` (the game-side `.obj` plus the `.precompiled` manifest). Delete it and the plugin still works in the editor, but packaging fails.
 * `"Installed": true` in the `.uplugin` marks the plugin as installed and prebuilt, so the engine does not compile it from source and treats it as not authored in the project. On its own it does not put the module into the game.
-* Ship `Binaries/Win64/UnrealEditor-SplineArray.pdb` alongside the editor DLL. UnrealBuildTool records the module pdb as a build product of the link step, so a host project that links the precompiled module fails on the missing file if the pdb is stripped. It is debug-only at runtime but not optional to the build; do not drop it to shrink the archive.
 
 The published releases since 1.0.2 ship with `bUsePrecompiled = true`, so a C++ project links the precompiled module directly. This line was missing from release 1.0.1.
 
