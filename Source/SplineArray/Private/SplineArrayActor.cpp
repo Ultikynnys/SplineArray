@@ -53,10 +53,18 @@ void ASplineArrayActor::OnConstruction(const FTransform& Transform)
 		Spline->UpdateSpline();
 	}
 
-	Rebuild();
-
 #if WITH_EDITORONLY_DATA
 	CachedSplineHash = ComputeSplineHash();
+#endif
+
+#if WITH_EDITOR
+	if (Segments.Num() == 0 || bSplineDirty)
+	{
+		Rebuild();
+		bSplineDirty = false;
+	}
+#else
+	Rebuild();
 #endif
 }
 
@@ -64,14 +72,14 @@ void ASplineArrayActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 	if (Spline)
 	{
 		const uint32 Hash = ComputeSplineHash();
 		if (Hash != CachedSplineHash)
 		{
 			CachedSplineHash = Hash;
-			Rebuild();
+			bSplineDirty = true;
 		}
 	}
 #endif
@@ -81,6 +89,16 @@ void ASplineArrayActor::Tick(float DeltaSeconds)
 void ASplineArrayActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
+	if (PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ASplineArrayActor, MeshAxisLength))
+	{
+		return;
+	}
+	bSplineDirty = true;
+}
+
+void ASplineArrayActor::ForceRebuild()
+{
+	bSplineDirty = false;
 	Rebuild();
 }
 #endif

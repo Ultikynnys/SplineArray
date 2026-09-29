@@ -57,6 +57,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spline Array")
 	void Rebuild();
 
+#if WITH_EDITOR
+	/** Details-panel button: regenerates the array and its LODs. */
+	UFUNCTION(CallInEditor, Category = "Spline Array")
+	void ForceRebuild();
+#endif
+
 	/** Distance (cm) between two consecutive copies with the current settings. */
 	UFUNCTION(BlueprintPure, Category = "Spline Array")
 	float GetResolvedSpacing() const;
@@ -179,5 +185,7 @@ private:
 	/** Hash of the spline geometry, used to detect edits that don't raise PostEditChangeProperty. */
 	uint32 ComputeSplineHash() const;
 	uint32 CachedSplineHash = 0;
+	/** True when spline edits are waiting for an explicit rebuild. */
+	bool bSplineDirty = false;
 #endif
 };
