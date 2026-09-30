@@ -1,0 +1,37 @@
+# Unreal Engine generated
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Build/
+.vs/
+.idea/
+*.opensdf
+*.sdf
+*.suo
+*.VC.db
+*.VC.opendb
+*.sln
+*.xcodeproj
+*.xcworkspace
+*.user
+*.userprefs
+
+# Compiled intermediates
+*.obj
+*.o
+*.exe
+*.pdb
+*.lib
+*.so
+*.dylib
+
+# OS cruft
+Thumbs.db
+.DS_Store
+
+# Editor / logs
+*.log
+
+# Agent workspace
+.reasonix/
