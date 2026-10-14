@@ -69,6 +69,24 @@ Without it, UnrealBuildTool discards the precompiled objects and tries to build 
 
 The published releases since 1.0.2 ship with `bUsePrecompiled = true`, so a C++ project links the precompiled module directly. This line was missing from release 1.0.1.
 
+### Releasing
+
+The repository is the source tree and must stay compilable, so its
+`Source/SplineArray/SplineArray.Build.cs` must **not** set `bUsePrecompiled`. The shipped
+`Build.cs` is kept separately at
+[`Distribution/SplineArray.Build.cs`](Distribution/SplineArray.Build.cs) and is what goes
+into the release zip. A pre-commit hook enforces both halves of that rule; enable it once
+per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+To package a release: build the plugin for Win64, replace
+`Source/SplineArray/SplineArray.Build.cs` in the packaged output with the file from
+`Distribution/`, drop `Binaries/Win64/*.pdb`, zip the plugin folder, and attach it to the
+release. See [Distribution/README.md](Distribution/README.md).
+
 ## Usage
 
 1. Place a **Spline Array Actor** in the level (*Place Actors → All Classes → Spline Array Actor*).

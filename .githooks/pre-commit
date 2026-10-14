@@ -1,0 +1,55 @@
+#!/bin/sh
+# SplineArray binary-distribution contract (README: "For plugin builders").
+#
+# The shipped module's Build.cs must set bUsePrecompiled = true so a C++ project links the
+# precompiled module; the source tree must NOT set it so a source checkout compiles from
+# source. The shipped file is kept at Distribution/SplineArray.Build.cs.
+#
+# Enable this hook once per clone:  git config core.hooksPath .githooks
+
+src=Source/SplineArray/SplineArray.Build.cs
+dist=Distribution/SplineArray.Build.cs
+README=README.md
+status=0
+
+if [ ! -f "$src" ]; then
+	echo "pre-commit: missing $src" >&2
+	exit 1
+fi
+if [ ! -f "$dist" ]; then
+	echo "pre-commit: missing the shipped Build.cs at $dist" >&2
+	exit 1
+fi
+
+# 1. The source tree must stay compilable: no bUsePrecompiled.
+if grep -q 'bUsePrecompiled' "$src"; then
+	echo "pre-commit: $src must not set bUsePrecompiled; a source checkout has no Binaries/ and has to compile from source." >&2
+	status=1
+fi
+
+# 2. The shipped Build.cs must set the flag.
+if ! grep -q 'bUsePrecompiled = true;' "$dist"; then
+	echo "pre-commit: $dist must set 'bUsePrecompiled = true;' (README: For plugin builders)." >&2
+	status=1
+fi
+
+# 3. The shipped Build.cs must be the source Build.cs plus only the bUsePrecompiled line,
+#    so the release cannot silently drift from the repo.
+if [ "$status" -eq 0 ]; then
+	a=$(mktemp) && b=$(mktemp)
+	grep -v -e 'bUsePrecompiled' -e '^[[:space:]]*//' -e '^[[:space:]]*$' "$dist" | tr -d '\r' > "$a"
+	grep -v -e '^[[:space:]]*//' -e '^[[:space:]]*$' "$src" | tr -d '\r' > "$b"
+	if ! diff -q "$a" "$b" >/dev/null; then
+		echo "pre-commit: $dist has drifted from $src; it must match except for the bUsePrecompiled line." >&2
+		status=1
+	fi
+	rm -f "$a" "$b"
+fi
+
+# 4. The README is the authoritative spec; keep the contract documented.
+if ! grep -q 'bUsePrecompiled = true' "$README"; then
+	echo "pre-commit: $README must keep documenting the 'bUsePrecompiled = true' release contract." >&2
+	status=1
+fi
+
+exit $status
