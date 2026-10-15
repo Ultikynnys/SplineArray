@@ -329,19 +329,15 @@ void ASplineArrayActor::Rebuild()
 
 	const ESplinePointType::Type EnginePointType = ToEnginePointType(PointType);
 	const int32 PointCount = Spline->GetNumberOfSplinePoints();
-	bool bPointTypeChanged = false;
 	for (int32 PointIndex = 0; PointIndex < PointCount; ++PointIndex)
 	{
 		if (Spline->GetSplinePointType(PointIndex) != EnginePointType)
 		{
 			Spline->SetSplinePointType(PointIndex, EnginePointType, false);
-			bPointTypeChanged = true;
 		}
 	}
-	if (bPointTypeChanged)
-	{
-		Spline->UpdateSpline();
-	}
+	// Point edits can leave the distance table stale even when point types are unchanged.
+	Spline->UpdateSpline();
 
 	const float Start = FMath::Max(0.0f, StartOffset);
 	const float End = Spline->GetSplineLength() - FMath::Max(0.0f, EndOffset);
@@ -639,6 +635,18 @@ void ASplineArrayActor::Rebuild()
 		Segment->RegisterComponent();
 		Segments.Add(Segment);
 	}
+
+#if WITH_EDITOR
+	// A component created from a details-panel callback can keep a stale scene proxy until the
+	// viewport forces a global recreate, so refresh each new segment's render state here.
+	for (USplineMeshComponent* Segment : Segments)
+	{
+		if (IsValid(Segment))
+		{
+			Segment->MarkRenderStateDirty();
+		}
+	}
+#endif
 
 	UE_LOG(LogSplineArray, Log, TEXT("Rebuild actor=%s segments=%d slices=%d wholeCopies=%d baked=%d slice=%.2fms build=%.2fms rebuildTotal=%.2fms"),
 		*GetName(), Segments.Num(), Slices.Num(), WholeMeshCopies, bUseBaked ? 1 : 0, SliceMs, BuildMs, MillisecondsSince(RebuildStart));
