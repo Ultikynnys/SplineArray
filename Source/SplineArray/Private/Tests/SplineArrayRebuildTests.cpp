@@ -144,4 +144,86 @@ bool FSplineArrayCutNormalsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSplineArrayTwistMethodTest,
+	"SplineArray.Rebuild.TwistMethodSetsSplineUpDir",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSplineArrayTwistMethodTest::RunTest(const FString& Parameters)
+{
+	UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (!TestNotNull(TEXT("Source cube"), Mesh))
+	{
+		return false;
+	}
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+	if (!TestNotNull(TEXT("Test world"), World))
+	{
+		return false;
+	}
+	ASplineArrayActor* Actor = World->SpawnActor<ASplineArrayActor>();
+	if (!TestNotNull(TEXT("Spline actor"), Actor))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	FObjectPropertyBase* MeshProperty = FindFProperty<FObjectPropertyBase>(ASplineArrayActor::StaticClass(), TEXT("SourceMesh"));
+	MeshProperty->SetObjectPropertyValue_InContainer(Actor, Mesh);
+	FProperty* TwistProperty = FindFProperty<FProperty>(ASplineArrayActor::StaticClass(), TEXT("TwistMethod"));
+	if (!TestNotNull(TEXT("TwistMethod property"), TwistProperty))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	USplineComponent* Spline = Actor->FindComponentByClass<USplineComponent>();
+	// A vertical spline: the exact case where the raw Z-up frame axis degenerates.
+	Spline->SetSplinePoints({FVector::ZeroVector, FVector(0.0, 0.0, 250.0)}, ESplineCoordinateSpace::Local);
+
+	const auto SetTwist = [&](ESplineArrayTwistMethod Method)
+	{
+		if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(TwistProperty))
+		{
+			EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(EnumProperty->ContainerPtrToValuePtr<void>(Actor), static_cast<int64>(Method));
+		}
+		else if (FByteProperty* ByteProperty = CastField<FByteProperty>(TwistProperty))
+		{
+			ByteProperty->SetPropertyValue_InContainer(Actor, static_cast<uint8>(Method));
+		}
+	};
+	const auto CheckSegmentUps = [&](const TCHAR* Label, bool bExpectDefaultUp, bool bExpectNonDefaultUp)
+	{
+		TInlineComponentArray<USplineMeshComponent*> Segments(Actor);
+		TestTrue(TEXT("Spline produced segments"), Segments.Num() > 0);
+		for (USplineMeshComponent* Segment : Segments)
+		{
+			const FVector Up = Segment->GetSplineUpDir();
+			TestFalse(Label, Up.ContainsNaN());
+			TestTrue(Label, FMath::IsNearlyEqual(Up.SizeSquared(), 1.0, 1.e-2));
+			if (bExpectDefaultUp)
+			{
+				TestTrue(Label, Up.Equals(FVector::UpVector, 1.e-3));
+			}
+			if (bExpectNonDefaultUp)
+			{
+				TestFalse(Label, Up.Equals(FVector::UpVector, 1.e-3));
+			}
+		}
+	};
+
+	SetTwist(ESplineArrayTwistMethod::ZUp);
+	Actor->ForceRebuild();
+	CheckSegmentUps(TEXT("Z-Up keeps the default up axis"), true, false);
+
+	SetTwist(ESplineArrayTwistMethod::Minimum);
+	Actor->ForceRebuild();
+	CheckSegmentUps(TEXT("Minimum gives a finite, non-degenerate unit up"), false, true);
+
+	SetTwist(ESplineArrayTwistMethod::Tangent);
+	Actor->ForceRebuild();
+	CheckSegmentUps(TEXT("Tangent gives a finite unit up"), false, false);
+
+	World->DestroyWorld(false);
+	return !HasAnyErrors();
+}
+
 #endif

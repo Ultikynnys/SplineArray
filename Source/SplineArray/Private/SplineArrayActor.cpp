@@ -577,6 +577,49 @@ void ASplineArrayActor::Rebuild()
 		}
 	}
 
+	// Per-boundary "up" for the twist method, aligned to the slice boundaries. Each segment's
+	// SplineUpDir drives the spline-mesh frame's up axis; Z-Up leaves the component default (0,0,1).
+	TArray<FVector> BoundaryUps;
+	if (TwistMethod != ESplineArrayTwistMethod::ZUp && Slices.Num() > 0)
+	{
+		BoundaryUps.SetNum(Slices.Num() + 1);
+		FVector PreviousTangent = FVector::ZeroVector;
+		FVector PreviousUp = FVector::ZeroVector;
+		for (int32 BoundaryIndex = 0; BoundaryIndex <= Slices.Num(); ++BoundaryIndex)
+		{
+			const float Distance = BoundaryIndex == 0 ? Slices[0].From : Slices[BoundaryIndex - 1].To;
+			const FVector TangentDir = SplineToParent.TransformVector(Spline->GetTangentAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::Local)).GetSafeNormal();
+			// A reference never parallel to the tangent keeps the up well-defined even on a vertical tangent.
+			const FVector Reference = FMath::Abs(FVector::DotProduct(FVector::UpVector, TangentDir)) > 0.99f ? FVector::ForwardVector : FVector::UpVector;
+
+			FVector Up;
+			if (TwistMethod == ESplineArrayTwistMethod::Tangent)
+			{
+				Up = SplineToParent.TransformVector(Spline->GetUpVectorAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::Local));
+			}
+			else if (BoundaryIndex == 0 || PreviousTangent.IsNearlyZero())
+			{
+				Up = Reference;
+			}
+			else
+			{
+				// Minimum: parallel-transport the previous up onto the new tangent.
+				Up = FQuat::FindBetweenNormals(PreviousTangent, TangentDir).RotateVector(PreviousUp);
+			}
+
+			Up -= FVector::DotProduct(Up, TangentDir) * TangentDir;
+			if (Up.IsNearlyZero())
+			{
+				Up = Reference - FVector::DotProduct(Reference, TangentDir) * TangentDir;
+			}
+			Up = Up.GetSafeNormal();
+
+			BoundaryUps[BoundaryIndex] = Up;
+			PreviousTangent = TangentDir;
+			PreviousUp = Up;
+		}
+	}
+
 	for (int32 Index = 0; Index < Slices.Num(); ++Index)
 	{
 		UStaticMesh* SegmentMesh = SegmentMeshes[Index];
@@ -618,6 +661,14 @@ void ASplineArrayActor::Rebuild()
 		Segment->SetCastShadow(true);
 		Segment->SetStartScale(CrossScale, false);
 		Segment->SetEndScale(CrossScale, false);
+		if (BoundaryUps.IsValidIndex(Index + 1))
+		{
+			const FVector SegmentUp = (BoundaryUps[Index] + BoundaryUps[Index + 1]).GetSafeNormal();
+			if (!SegmentUp.IsNearlyZero())
+			{
+				Segment->SetSplineUpDir(SegmentUp, false);
+			}
+		}
 
 		const FVector P0 = SplineToParent.TransformPosition(Spline->GetLocationAtDistanceAlongSpline(From, ESplineCoordinateSpace::Local));
 		const FVector P1 = SplineToParent.TransformPosition(Spline->GetLocationAtDistanceAlongSpline(To, ESplineCoordinateSpace::Local));

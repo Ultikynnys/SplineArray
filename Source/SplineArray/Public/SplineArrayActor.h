@@ -50,6 +50,18 @@ enum class ESplineArrayPointType : uint8
 	CurveClamped UMETA(DisplayName = "Curve (Clamped)")
 };
 
+/** How each copy's cross-section is rolled about the spline; mirrors Blender's curve Twist Method. */
+UENUM(BlueprintType)
+enum class ESplineArrayTwistMethod : uint8
+{
+	/** Cross-section stays level with the actor's up (Z) axis. Flips when the tangent nears vertical. */
+	ZUp     UMETA(DisplayName = "Z-Up"),
+	/** Rotation-minimizing frame: the roll changes as little as possible, with no flip through vertical sections. */
+	Minimum UMETA(DisplayName = "Minimum"),
+	/** Follow the spline's own up axis; rotating a spline point twists the copies there. */
+	Tangent UMETA(DisplayName = "Tangent")
+};
+
 UCLASS(Blueprintable, ClassGroup = (SplineArray), meta = (DisplayName = "Spline Array Actor"))
 class SPLINEARRAY_API ASplineArrayActor : public AActor
 {
@@ -101,6 +113,10 @@ protected:
 	/** Mesh axis deformed along the spline; negative directions reverse the mesh. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Axis"))
 	ESplineArrayForwardAxis ForwardAxis = ESplineArrayForwardAxis::X;
+
+	/** How each copy is rolled about the spline (Blender-style twist). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Twist Method"))
+	ESplineArrayTwistMethod TwistMethod = ESplineArrayTwistMethod::Minimum;
 
 	/** Interpolation applied to every spline point; "Linear" runs the copies in straight segments instead of a bezier curve. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spline Array", meta = (DisplayName = "Point Type"))
