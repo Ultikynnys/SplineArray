@@ -20,6 +20,7 @@ namespace
 	struct FMeshCutCorner
 	{
 		FVector3d Position = FVector3d::ZeroVector;
+		FVector3f Normal = FVector3f(0.0f, 0.0f, 1.0f);
 		TArray<FVector2f> UVs;
 		int32 SourceVertex = INDEX_NONE;
 	};
@@ -52,6 +53,7 @@ namespace
 				FMeshCutCorner C;
 				C.Position = A.Position + T * (B.Position - A.Position);
 				C.SourceVertex = INDEX_NONE;
+				C.Normal = (A.Normal + static_cast<float>(T) * (B.Normal - A.Normal)).GetSafeNormal();
 				C.UVs.SetNum(A.UVs.Num());
 				for (int32 Layer = 0; Layer < C.UVs.Num(); ++Layer)
 				{
@@ -103,12 +105,14 @@ namespace
 				SourceUVLayers.Add(Source.Attributes()->GetUVLayer(Layer));
 			}
 		}
+		const UE::Geometry::FDynamicMeshNormalOverlay* SourceNormals = Source.Attributes() ? Source.Attributes()->PrimaryNormals() : nullptr;
 
 		UE::Geometry::FDynamicMesh3 Result;
 		Result.EnableAttributes();
 		Result.EnableTriangleGroups();
 		UE::Geometry::FDynamicMeshAttributeSet* ResultAttributes = Result.Attributes();
 		ResultAttributes->EnableMaterialID();
+		UE::Geometry::FDynamicMeshNormalOverlay* ResultNormals = ResultAttributes->PrimaryNormals();
 		const UE::Geometry::FDynamicMeshMaterialAttribute* SourceMaterialIDs = Source.Attributes()->GetMaterialID();
 		TArray<UE::Geometry::FDynamicMeshUVOverlay*> ResultUVLayers;
 		if (ResultAttributes && SourceUVLayers.Num() > 0)
@@ -150,6 +154,15 @@ namespace
 				FMeshCutCorner CutCorner;
 				CutCorner.Position = Source.GetVertex(SourceCorners[Corner]);
 				CutCorner.SourceVertex = SourceCorners[Corner];
+				if (SourceNormals)
+				{
+					const UE::Geometry::FIndex3i TriangleNormals = SourceNormals->GetTriangle(TriangleID);
+					const int32 NormalElement = Corner == 0 ? TriangleNormals.A : Corner == 1 ? TriangleNormals.B : TriangleNormals.C;
+					if (NormalElement >= 0 && SourceNormals->IsElement(NormalElement))
+					{
+						CutCorner.Normal = SourceNormals->GetElement(NormalElement);
+					}
+				}
 				CutCorner.UVs.SetNum(NumLayers);
 				for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 				{
@@ -212,14 +225,23 @@ namespace
 					const int32 E2 = ResultUV->AppendElement(Polygon[Fan + 1].UVs[Layer]);
 					ResultUV->SetTriangle(NewTriangleID, UE::Geometry::FIndex3i(E0, E1, E2));
 				}
+				if (ResultNormals)
+				{
+					const int32 N0 = ResultNormals->AppendElement(Polygon[0].Normal);
+					const int32 N1 = ResultNormals->AppendElement(Polygon[Fan].Normal);
+					const int32 N2 = ResultNormals->AppendElement(Polygon[Fan + 1].Normal);
+					ResultNormals->SetTriangle(NewTriangleID, UE::Geometry::FIndex3i(N0, N1, N2));
+				}
 			}
 		}
 
-		if (ResultAttributes && ResultAttributes->PrimaryNormals())
+		// Only synthesize normals when the source has none; otherwise the per-corner normals set above
+		// (copied from the source overlay, interpolated at cuts) are preserved as-is.
+		if (!SourceNormals && ResultNormals)
 		{
 			UE::Geometry::FMeshNormals Normals(&Result);
 			Normals.ComputeVertexNormals();
-			Normals.CopyToOverlay(ResultAttributes->PrimaryNormals());
+			Normals.CopyToOverlay(ResultNormals);
 		}
 
 		FStaticMeshAttributes OutStaticAttributes(OutDescription);
@@ -386,6 +408,9 @@ bool PrepareBisectedMesh(UStaticMesh* Target, UStaticMesh* SourceMesh, const FMe
 	{
 		Target->GetSourceModel(0).BuildSettings = SourceMesh->GetSourceModel(0).BuildSettings;
 	}
+	// SliceOneLOD authors explicit per-corner normals (preserving the source's splits), so keep them:
+	// otherwise the build welds and recomputes normals across the cut geometry, smoothing hard edges.
+	Target->GetSourceModel(0).BuildSettings.bRecomputeNormals = false;
 	Target->CreateMeshDescription(0, LOD0Description);
 	Target->CommitMeshDescription(0, CommitParams);
 
